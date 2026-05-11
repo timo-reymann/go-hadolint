@@ -5,6 +5,7 @@ go-hadolint
 [![GitHub Release](https://img.shields.io/github/v/tag/timo-reymann/go-hadolint?label=version)](https://github.com/timo-reymann/go-hadolint/releases)
 [![Go Reference](https://pkg.go.dev/badge/github.com/timo-reymann/go-hadolint.svg)](https://pkg.go.dev/github.com/timo-reymann/go-hadolint)
 [![Go Report Card](https://goreportcard.com/badge/github.com/timo-reymann/go-hadolint)](https://goreportcard.com/report/github.com/timo-reymann/go-hadolint)
+[![codecov](https://codecov.io/gh/timo-reymann/go-hadolint/graph/badge.svg)](https://codecov.io/gh/timo-reymann/go-hadolint)
 [![Renovate](https://img.shields.io/badge/renovate-enabled-green)](https://renovatebot.com)
 
 Standalone Go package that bundles [hadolint](https://github.com/hadolint/hadolint) — the Dockerfile linter — and exposes a typed API for linting Dockerfiles from your Go code, with no system-level install required.
