@@ -13,6 +13,13 @@ jobs:
   test:
     name: ${{ matrix.os }} / hadolint=${{ matrix.hadolint }}
     runs-on: ${{ matrix.os }}
+    # bash is available everywhere on GitHub-hosted runners (Git for Windows
+    # provides it on Windows). Using it consistently for go vet / go test
+    # avoids PowerShell's native-argument parser splitting flags like
+    # `-coverprofile=coverage.out` at the `=`.
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
