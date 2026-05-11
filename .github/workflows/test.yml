@@ -24,11 +24,14 @@ jobs:
       fail-fast: false
       matrix:
         # All platforms covered by an embedded binary in this package.
+        # GitHub deprecated all Intel macOS runners — the darwin/amd64
+        # binary is covered on macos-latest (arm64) via Rosetta, which is
+        # how hadolint runs on Apple Silicon anyway since upstream does
+        # not publish a native darwin/arm64 build.
         os:
           - ubuntu-latest        # linux/amd64
           - ubuntu-24.04-arm     # linux/arm64
-          - macos-13             # darwin/amd64
-          - macos-latest         # darwin/arm64 (M-series, needs Rosetta for the embedded x86_64 hadolint binary)
+          - macos-latest         # darwin/arm64 (M-series; covers darwin/amd64 via Rosetta)
           - windows-latest       # windows/amd64
         # Exercise the package both when a system `hadolint` is available and when it is not.
         # PATH-fallback tests skip themselves when hadolint is absent.

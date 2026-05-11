@@ -152,7 +152,7 @@ This downloads every supported platform's binary plus the upstream `LICENSE` and
 make test
 ```
 
-CI runs the suite on `ubuntu-latest`, `ubuntu-24.04-arm`, `macos-latest`, `macos-13`, and `windows-latest`, with and without a system `hadolint` available — see `.github/workflows/test.yml`. The full behavioral suite always runs against the embedded binary; the `$PATH` fallback path is exercised in the "installed" matrix legs and skipped otherwise.
+CI runs the suite on `ubuntu-latest`, `ubuntu-24.04-arm`, `macos-latest`, and `windows-latest`, with and without a system `hadolint` available — see `.github/workflows/test.yml`. The full behavioral suite always runs against the embedded binary; the `$PATH` fallback path is exercised in the "installed" matrix legs and skipped otherwise.
 
 > **Note for Apple Silicon developers:** hadolint v2.12.0's `darwin/amd64` binary is known to segfault under Rosetta on some Apple Silicon hosts ([upstream issue](https://github.com/hadolint/hadolint/issues/925)). When this happens the embedded test suite is skipped with a clear message; install hadolint via `brew install hadolint` to exercise the `$PATH` fallback locally.
 
