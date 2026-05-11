@@ -1,0 +1,105 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  HADOLINT_VERSION: v2.12.0
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / hadolint=${{ matrix.hadolint }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # All platforms covered by an embedded binary in this package.
+        os:
+          - ubuntu-latest        # linux/amd64
+          - ubuntu-24.04-arm     # linux/arm64
+          - macos-13             # darwin/amd64
+          - macos-latest         # darwin/arm64 (M-series, needs Rosetta for the embedded x86_64 hadolint binary)
+          - windows-latest       # windows/amd64
+        # Exercise the package both when a system `hadolint` is available and when it is not.
+        # PATH-fallback tests skip themselves when hadolint is absent.
+        hadolint: [installed, not-installed]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Rosetta (macOS arm64)
+        if: matrix.os == 'macos-latest'
+        run: softwareupdate --install-rosetta --agree-to-license
+
+      - name: Install hadolint (Linux)
+        if: matrix.hadolint == 'installed' && startsWith(matrix.os, 'ubuntu-')
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64)  asset=hadolint-Linux-x86_64 ;;
+            aarch64) asset=hadolint-Linux-arm64 ;;
+            *) echo "unsupported arch: $(uname -m)"; exit 1 ;;
+          esac
+          sudo curl -fsSL -o /usr/local/bin/hadolint \
+            "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/${asset}"
+          sudo chmod +x /usr/local/bin/hadolint
+          hadolint --version
+
+      - name: Install hadolint (macOS)
+        if: matrix.hadolint == 'installed' && startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Homebrew provides a native arm64 build on Apple Silicon and an amd64 build on Intel.
+          brew install hadolint
+          hadolint --version
+
+      - name: Install hadolint (Windows)
+        if: matrix.hadolint == 'installed' && startsWith(matrix.os, 'windows')
+        shell: pwsh
+        run: |
+          $dest = Join-Path $env:USERPROFILE 'hadolint'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $url = "https://github.com/hadolint/hadolint/releases/download/${env:HADOLINT_VERSION}/hadolint-Windows-x86_64.exe"
+          Invoke-WebRequest -Uri $url -OutFile (Join-Path $dest 'hadolint.exe')
+          Add-Content $env:GITHUB_PATH $dest
+          & (Join-Path $dest 'hadolint.exe') --version
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Upload coverage
+        if: matrix.os == 'ubuntu-latest' && matrix.hadolint == 'installed'
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.out
+          fail_ci_if_error: false
+
+  cross-build:
+    # Make sure the catch-all build constraint in bin_unsupported.go compiles
+    # for platforms where no binary is embedded.
+    name: cross-build (unsupported platforms)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build for freebsd/amd64
+        run: GOOS=freebsd GOARCH=amd64 go build ./...
+      - name: Build for openbsd/amd64
+        run: GOOS=openbsd GOARCH=amd64 go build ./...
+      - name: Build for linux/386
+        run: GOOS=linux GOARCH=386 go build ./...
