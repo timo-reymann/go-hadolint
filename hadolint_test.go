@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -390,6 +391,26 @@ func TestResolveConfigPath(t *testing.T) {
 		}
 	})
 
+	t.Run("Config writeTempFile error is surfaced", func(t *testing.T) {
+		bogus := filepath.Join(t.TempDir(), "does", "not", "exist")
+		t.Setenv("TMPDIR", bogus)
+		t.Setenv("TMP", bogus)
+		t.Setenv("TEMP", bogus)
+
+		h := &Hadolinter{Config: &Config{Ignored: []string{"DL3000"}}}
+		path, cleanup, err := h.resolveConfigPath()
+		if err == nil {
+			cleanup()
+			_ = os.Remove(path)
+			t.Fatal("expected error when temp dir does not exist")
+		}
+		if path != "" {
+			t.Fatalf("expected empty path on error, got %q", path)
+		}
+		// cleanup must still be safe to call even when an error was returned.
+		cleanup()
+	})
+
 	t.Run("Config takes precedence over ConfigFile", func(t *testing.T) {
 		h := &Hadolinter{
 			ConfigFile: "/etc/hadolint.yaml",
@@ -416,6 +437,115 @@ func equalSlice(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func TestAnalyzeSurfacesConfigError(t *testing.T) {
+	// resolveConfigPath runs *before* the binary is invoked, so we don't
+	// need a working hadolint to exercise the error path: a bare
+	// Hadolinter with a Config set and a bogus TMPDIR is enough.
+	bogus := filepath.Join(t.TempDir(), "does", "not", "exist")
+	t.Setenv("TMPDIR", bogus)
+	t.Setenv("TMP", bogus)
+	t.Setenv("TEMP", bogus)
+
+	h := &Hadolinter{Config: &Config{Ignored: []string{"DL3000"}}}
+
+	if _, err := h.AnalyzeFile("testdata/valid.Dockerfile", ""); err == nil {
+		t.Fatal("AnalyzeFile: expected error when temp config cannot be written")
+	}
+	if _, err := h.AnalyzeSnippet([]byte("FROM alpine:3.20\n"), ""); err == nil {
+		t.Fatal("AnalyzeSnippet: expected error when temp config cannot be written")
+	}
+}
+
+func TestConfigWriteTempFile(t *testing.T) {
+	t.Run("happy path writes valid YAML and returns a path under TMPDIR", func(t *testing.T) {
+		strict := true
+		c := &Config{
+			Ignored:           []string{"DL3000", "DL3001"},
+			TrustedRegistries: []string{"my-company.com:5000"},
+			LabelSchema:       map[string]string{"author": "text"},
+			StrictLabels:      &strict,
+			FailureThreshold:  "warning",
+			Override: &Override{
+				Error:   []string{"DL3007"},
+				Warning: []string{"DL3010"},
+			},
+		}
+		path, err := c.writeTempFile()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Remove(path) })
+
+		if !strings.HasPrefix(filepath.Base(path), "go-hadolint-") || !strings.HasSuffix(path, ".yaml") {
+			t.Fatalf("expected go-hadolint-*.yaml temp file, got %q", path)
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("temp file unreadable: %v", err)
+		}
+		content := string(data)
+		for _, want := range []string{
+			"ignored:",
+			"- DL3000",
+			"- DL3001",
+			"trustedRegistries:",
+			"- my-company.com:5000",
+			"label-schema:",
+			"author: text",
+			"strict-labels: true",
+			"failure-threshold: warning",
+			"override:",
+			"error:",
+			"- DL3007",
+		} {
+			if !strings.Contains(content, want) {
+				t.Fatalf("temp config missing %q; full content:\n%s", want, content)
+			}
+		}
+	})
+
+	t.Run("empty Config still serializes and writes", func(t *testing.T) {
+		path, err := (&Config{}).writeTempFile()
+		if err != nil {
+			t.Fatalf("unexpected error for empty config: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Remove(path) })
+
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// With every field omitted, yaml.Marshal emits "{}\n" — three bytes.
+		// Don't assert on the exact bytes (yaml lib formatting can drift);
+		// just confirm the file exists and is tiny.
+		if info.Size() == 0 {
+			t.Fatalf("expected non-empty serialization (yaml.Marshal returns at least \"{}\\n\"), got zero bytes")
+		}
+	})
+
+	t.Run("os.CreateTemp failure surfaces a wrapped error", func(t *testing.T) {
+		// Point every temp-dir env var os.TempDir() consults at a path
+		// that cannot exist, so CreateTemp fails before any other branch.
+		bogus := filepath.Join(t.TempDir(), "does", "not", "exist")
+		t.Setenv("TMPDIR", bogus) // Unix
+		t.Setenv("TMP", bogus)    // Windows
+		t.Setenv("TEMP", bogus)   // Windows
+
+		path, err := (&Config{Ignored: []string{"DL3000"}}).writeTempFile()
+		if err == nil {
+			_ = os.Remove(path)
+			t.Fatal("expected error when temp dir does not exist")
+		}
+		if !strings.Contains(err.Error(), "hadolint: create temp config") {
+			t.Fatalf("expected wrapped CreateTemp error, got: %v", err)
+		}
+		if path != "" {
+			t.Fatalf("expected empty path on error, got %q", path)
+		}
+	})
 }
 
 func TestNewResult(t *testing.T) {
