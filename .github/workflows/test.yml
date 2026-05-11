@@ -89,10 +89,11 @@ jobs:
       - name: go test
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
-      - name: Upload coverage
+      - name: Upload coverage reports to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.hadolint == 'installed'
         uses: codecov/codecov-action@v5
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.out
           fail_ci_if_error: false
 
